@@ -1,0 +1,276 @@
+For Cloud Shell
+=================
+# Create a resource group in your Azure subscription 
+az group create --name aksDay3Group --location northeurope
+
+#create VNET within your resource group
+az network vnet create -g aksday3group -n aksvnet --address-prefix 10.0.0.0/16 --subnet-name akssubnet --subnet-prefix 10.0.0.0/24
+
+#check and enlist the subnet created
+az network vnet subnet list --resource-group aksday3group --vnet-name aksvnet --query "[0].id" --output tsv
+
+#provision an AKS cluster in  the same resource group with managed identity enabled, with 3 nodes accross 3 zones with Kubernetes version 1.19.6, Azure Net plugin, within the subnet created above, an IP range within the subnet and add-on monitoring, change vnet-subnet-id suitably
+az aks create --resource-group aksday3group --enable-managed-identity --name aksday3 --zones 1 2 3 --node-count 3 --kubernetes-version 1.19.6 --network-plugin azure --vnet-subnet-id "/subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksday3group/providers/Microsoft.Network/virtualNetworks/aksvnet/subnets/akssubnet" --service-cidr 10.1.0.0/24 --dns-service-ip 10.1.0.10 --docker-bridge-address 172.17.0.1/24 --enable-addons monitoring --generate-ssh-keys
+
+#create an ACR within the same resource group, change subscription id suitably
+az acr create --resource-group aksDay3Group --name aksDay3acr --sku Standard --subscription 118ae9f9-9038-414c-ba64-08c5056602d1 --admin-enabled true
+
+#check the identity of the AKS cluster
+az aks show -g aksday3group -n aksday3 --query "identity"
+
+#create a role assignment and give the above identity an ACR Pull access, change object id suitably
+az role assignment create --assignee-object-id 291ac074-b01e-47ff-89c0-6a06cf6820e0 --scope /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group --role acrpull
+
+#attach the AKS to the ACR
+az aks update -n aksday3 -g aksDay3Group --attach-acr aksDay3acr
+
+#create and view an azure keyvault and associate it with our AKS cluster
+az keyvault create --name aksphpkeyvault --resource-group aksDay3Group --location northeurope
+az keyvault secret set --name mysqlpass --value password123 --vault-name aksphpkeyvault
+clientId=$(az aks show -g aksDay3Group -n aksday3 --query identityProfile.kubeletidentity.clientId -o tsv)
+az keyvault set-policy -n aksphpkeyvault --key-permissions get --spn $clientId
+az keyvault set-policy -n aksphpkeyvault --secret-permissions get --spn $clientId
+az keyvault set-policy -n aksphpkeyvault --certificate-permissions get --spn $clientId
+az keyvault show --name aksphpkeyvault
+
+
+------------------------------
+Cloud Shell - Optional Section to create AGIC as Add-On
+------------------------------
+
+#create a static IP
+az network public-ip create -n agicPublicIp -g aksDay3Group --allocation-method Static --sku Standard
+
+#create a VNET and Subnet for Application Gateway
+az network vnet create -n agicVnet -g aksDay3Group --address-prefix 11.0.0.0/16 --subnet-name agicSubnet --subnet-prefix 11.0.0.0/24
+
+#provision an application gateway
+az network application-gateway create -n agicAppGateway -l northeurope -g aksDay3Group --sku Standard_v2 --public-ip-address agicPublicIp --vnet-name agicVnet --subnet agicSubnet
+
+#peer the AKS VNET and the App Gateway VNET. Change remote VNET IDs suitably
+az network vnet show -n aksvnet -g aksday3group -o tsv --query "id"
+az network vnet peering create -n AppGWtoAKSVnetPeering -g aksday3group --vnet-name agicVnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksday3group/providers/Microsoft.Network/virtualNetworks/aksvnet --allow-vnet-access
+az network vnet show -n agicVnet -g aksDay3Group -o tsv --query "id"
+az network vnet peering create -n AKStoAppGWVnetPeering -g aksday3group --vnet-name aksvnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/virtualNetworks/agicVnet --allow-vnet-access
+
+#apply application gateway (AGIC) add-on to the AKS cluster
+az network application-gateway show -n agicAppGateway -g aksday3group -o tsv --query "id" 
+az aks get-credentials --resource-group aksday3group --name aksday3
+az aks enable-addons -n aksday3 -g aksday3group -a ingress-appgw --appgw-id /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/applicationGateways/agicAppGateway
+==========================================================================================================
+
+For VSCode
+==================
+
+#prepare VSCode to work with your AKS cluster
+az aks install-cli
+az aks get-credentials --resource-group aksday3group --name aksday3
+
+#check namespaces and create one
+kubectl get ns
+kubectl create namespace newdev
+
+#create a secret to store root password of mysql
+kubectl create secret generic mysqlsecret -n newdev --from-literal=rootpass=password123 --dry-run=client -o yaml > mysqlsecret.yaml
+kubectl apply -f mysqlsecret.yaml
+
+#provision a statefulset with a MySQL container and persistent volume (default- snadard ssd). Load the secret as environment variable
+kubectl apply -f mysqlset.yaml
+
+# create a headless ClusterIP type service to expose MySQL pod
+kubectl apply -f mysqlservice.yaml
+
+# check whether the mysql service is running and then log into MySQL container
+kubectl get po -n newdev
+kubectl exec -n newdev -ti mysqlset-0 -c mysql-container -- mysql --user=root -p
+
+#create database and table within MYSQL
+create database mydb;
+show databases;
+use mydb;
+create table registration_tbl(
+   reg_id INT NOT NULL AUTO_INCREMENT,
+   first_name VARCHAR(100) NOT NULL,
+   last_name VARCHAR(100) NOT NULL,
+   email VARCHAR(100) NOT NULL,
+   PRIMARY KEY ( reg_id )
+);
+show tables;
+
+#create a user to ensure it can connect from anywhere within the VNET. And give it access to the databse created above.
+CREATE USER 'aksuser'@'10.0.0.%' IDENTIFIED BY 'password123';
+GRANT ALL PRIVILEGES ON mydb.* TO 'aksuser'@'10.0.0.%';
+
+#exit from MySQL prompt
+exit
+
+#check whether you can access and operate MySQL from a temporary pod created within the cluster
+kubectl run mysql-client --image=mysql:5.7 -i --rm --restart=Never -- mysql -h mysqlset-0.mysqlservice.newdev.svc.cluster.local -u aksuser -p password123 <<EOF
+use mydb;
+show tables;
+EOF
+
+#create a new secret with all credential to reach MySQL minus the password
+kubectl create secret generic phpsecret -n newdev --from-literal=mysqlserver=mysqlset-0.mysqlservice.newdev.svc.cluster.local --from-literal=mysqluser=aksuser --from-literal=mysqldb=mydb --dry-run=client -o yaml > phpsecret.yaml
+kubectl apply -f phpsecret.yaml
+
+#move to docker-build folder
+cd docker-build
+
+#use docker compose command to build image and run container
+docker-compose up -d
+
+#list all containers
+docker ps
+
+#you can check the webserver running at http://localhost:8088. You will see MySQL connection error message but ignore.
+
+#offload and remove existing containers
+docker-compose down
+docker rm -f $(docker ps -aq)
+
+#check image 
+docker images
+
+#create a separate namespace to install csi driver and provider pods
+kubectl create namespace csi
+helm repo add secrets-store-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/secrets-store-csi-driver/master/charts -n csi
+helm install csi-secrets-store secrets-store-csi-driver/secrets-store-csi-driver -n csi --set grpcSupportedProviders="azure;gcp" -n csi
+kubectl apply -f https://raw.githubusercontent.com/Azure/secrets-store-csi-driver-provider-azure/master/deployment/provider-azure-installer.yaml -n csi
+kubectl get po -n csi
+
+#create the secret provider class to connect to Azure Key Vault
+kubectl create -f aksspclass.yaml
+
+#login to ACR and list
+az acr login --name aksDay3acr
+az acr list --resource-group aksDay3Group --query "[].{acrLoginServer:loginServer}" --output table
+
+#option1 - tag existing image and push it ACR 
+docker tag docker-build_php aksday3acr.azurecr.io/docker-build-php:v1
+docker push aksday3acr.azurecr.io/docker-build-php:v1
+
+#option2 - build the image in ACR itself using the local dockerfile
+az acr build --registry aksday3acr --image docker-build-php:v1 .
+
+#come out of the docker-build folder
+cd ..
+
+#create the service that will use secret provider class
+kubectl apply -f phpsecret.yaml
+
+#create a deployment using the image from ACR
+kubectl apply -f phpdeploy.yaml
+
+#check the apache-php pods and their IPs 
+kubectl get po -n newdev -o wide
+
+#check whether you can access the website from one of the pods using a temporary pod
+kubectl run http-client --image=nginx -i --rm --restart=Never -- curl http://10.1.0.5 
+
+#create one clusterip type and one loadbalancer type service
+kubectl expose deploy phpdeploy --type=LoadBalancer -n newdev --port=80 --target-port=80 -o yaml> phpservice.yaml
+kubectl expose deploy phpdeploy --type=ClusterIP --name=phpclusterservice -n newdev --port=80 --target-port=80 -o yaml> phpclusterservice.yaml
+
+#check the services
+kubectl get services -n newdev -o wide
+
+#use the load balancer public ip and check like http://<ip>
+
+#create a self-signed certificate to be used in ingress
+openssl req -x509 -cofig file ca.cnf  -out aks-ingress-tls.crt -keyout aks-ingress-tls.key
+
+#create a secret using the certificate above
+kubectl create secret tls aks-ingress-tls --namespace newdev --key aks-ingress-tls.key --cert aks-ingress-tls.crt
+
+#add and install helm repo for ingress
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install nginx-ingress ingress-nginx/ingress-nginx \
+    --namespace newdev \
+    --set controller.replicaCount=2 \
+    --set controller.nodeSelector."beta\.kubernetes\.io/os"=linux \
+    --set defaultBackend.nodeSelector."beta\.kubernetes\.io/os"=linux \
+    --set controller.admissionWebhooks.patch.nodeSelector."beta\.kubernetes\.io/os"=linux
+
+#create the ingress
+kubectl apply -f ingress.yaml
+
+#check ingress
+kubectl get ingress -n newdev -o wide
+
+#use the igress public ip (address) and check like http:<ip> and https://<ip>
+
+==================================================================
+
+Optional - Cloud Shell - implement AGIC as Add-On. Change appgw-id suitably
+
+az network application-gateway show -n agicAppGateway -g aksday3group -o tsv --query "id" 
+az aks enable-addons -n aksday3 -g aksday3group -a ingress-appgw --appgw-id /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/applicationGateways/agicAppGateway
+
+#check the app gateway public IP like http://<ip>
+
+======================================================================
+
+kubectl create clusterrole pod-reader --verb=get,list,watch --resource=pods
+kubectl create role pod-reader --verb=get --verb=list --verb=watch --resource=pods
+
+kubectl create rolebinding admin --clusterrole=admin --user=user1 --user=user2 --group=group1
+kubectl create clusterrolebinding pod-reader-binding --clusterrole=pod-reader --user=pranabp@microsoft.com  --group=aksgroup
+
+
+kubectl scale --replicas=3 newdev/phpdeploy
+
+kubectl autoscale deployment phpdeploy --min=2 --max=10
+
+az aks update \
+  --resource-group aksday3group \
+  --name aksday3 \
+  --enable-cluster-autoscaler \
+  --min-count 1 \
+  --max-count 3
+
+
+
+
+
+
+az feature register --name AKS-IngressApplicationGatewayAddon --namespace microsoft.containerservice
+az feature list -o table --query "[?contains(name, 'microsoft.containerservice/AKS-IngressApplicationGatewayAddon')].{Name:name,State:properties.state}"
+az provider register --namespace Microsoft.ContainerService
+
+az network public-ip create -n agicPublicIp -g aksDay3Group --allocation-method Static --sku Standard
+az network vnet create -n agicVnet -g aksDay3Group --address-prefix 11.0.0.0/16 --subnet-name agicSubnet --subnet-prefix 11.0.0.0/24 
+az network application-gateway create -n agicAppGateway -l northeurope -g aksDay3Group --sku Standard_v2 --public-ip-address agicPublicIp --vnet-name agicVnet --subnet agicSubnet
+
+az network vnet show -n aksvnet -g aksday3group -o tsv --query "id"
+az network vnet peering create -n AppGWtoAKSVnetPeering -g aksday3group --vnet-name agicVnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksday3group/providers/Microsoft.Network/virtualNetworks/aksvnet --allow-vnet-access
+az network vnet show -n agicVnet -g aksDay3Group -o tsv --query "id"
+az network vnet peering create -n AKStoAppGWVnetPeering -g aksday3group --vnet-name aksvnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/virtualNetworks/agicVnet --allow-vnet-access
+
+az network application-gateway show -n agicAppGateway -g aksday3group -o tsv --query "id" 
+az aks enable-addons -n aksday3 -g aksday3group -a ingress-appgw --appgw-id /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/applicationGateways/agicAppGateway
+
+openssl req -x509 -cofig file ca.cnf  -out aks-ingress-tls.crt -keyout aks-ingress-tls.key
+
+kubectl create secret tls aks-ingress-tls --namespace newdev --key aks-ingress-tls.key --cert aks-ingress-tls.crt
+
+openssl pkcs12 -export -out appgwcert.pfx -inkey privateKey.key -in appgwcert.crt
+kubectl apply -f ingress.yaml
+
+
+
+
+CREATE DATABASE test;
+CREATE TABLE test.messages (message VARCHAR(250));
+INSERT INTO test.messages VALUES ('hello');
+EOF
+
+#docker image rm b6fc2e11262a -f
+
+docker create -t -i aksday3acr.azurecr.io/docker-build-php:v1 bash
+docker start -a -i e3b38ba43e3
+
+
+
+
+

@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: phpdeploy
+  name: phpdeploy
+  namespace: newdev
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  minReadySeconds: 5 
+  selector:
+    matchLabels:
+      app: phpdeploy
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: phpdeploy
+    spec:
+      volumes:
+      - name: www-storage
+        emptyDir: {}
+      - name: secrets-store-inline
+        csi:
+          driver: secrets-store.csi.k8s.io
+          readOnly: true
+          volumeAttributes:
+            secretProviderClass: aksspclass  
+      containers:
+      - image: aksday3acr.azurecr.io/docker-build-php:v1
+        imagePullPolicy: Always
+        name: docker-build-php
+        volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
+        env:
+        - name: MYSQL_SERVER
+          valueFrom:
+            secretKeyRef:
+              name: phpsecret
+              key: mysqlserver
+        - name: MYSQL_USER
+          valueFrom:
+            secretKeyRef:
+              name: phpsecret
+              key: mysqluser
+        - name: MYSQL_PASS
+          valueFrom:
+            secretKeyRef:
+              name: mysqlserver
+              key: dbpassword
+        - name: MYSQL_DB
+          valueFrom:
+            secretKeyRef:
+              name: phpsecret
+              key: mysqldb      
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+status: {}
