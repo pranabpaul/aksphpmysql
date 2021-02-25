@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2021-02-25T23:24:10Z"
+  labels:
+    app: phpdeploy
+  managedFields:
+  - apiVersion: v1
+    fieldsType: FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:labels:
+          .: {}
+          f:app: {}
+      f:spec:
+        f:externalTrafficPolicy: {}
+        f:ports:
+          .: {}
+          k:{"port":80,"protocol":"TCP"}:
+            .: {}
+            f:port: {}
+            f:protocol: {}
+            f:targetPort: {}
+        f:selector:
+          .: {}
+          f:app: {}
+        f:sessionAffinity: {}
+        f:type: {}
+    manager: kubectl.exe
+    operation: Update
+    time: "2021-02-25T23:24:10Z"
+  name: phpdeploy
+  namespace: newdev
+  resourceVersion: "46497"
+  selfLink: /api/v1/namespaces/newdev/services/phpdeploy
+  uid: 95b2dd6c-453b-4e1a-bbf1-f2e0e611bb07
+spec:
+  clusterIP: 10.1.0.19
+  externalTrafficPolicy: Cluster
+  ports:
+  - nodePort: 31569
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: phpdeploy
+  sessionAffinity: None
+  type: LoadBalancer
+status:
+  loadBalancer: {}
