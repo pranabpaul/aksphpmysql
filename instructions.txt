@@ -177,7 +177,7 @@ kubectl get services -n newdev -o wide
 #use the load balancer public ip and check like http://<ip>
 
 #create a self-signed certificate to be used in ingress
-openssl req -x509 -cofig file ca.cnf  -out aks-ingress-tls.crt -keyout aks-ingress-tls.key
+openssl req -x509 -config ca.cnf  -out aks-ingress-tls.crt -keyout aks-ingress-tls.key
 
 #create a secret using the certificate above
 kubectl create secret tls aks-ingress-tls --namespace newdev --key aks-ingress-tls.key --cert aks-ingress-tls.crt
@@ -194,80 +194,30 @@ helm install nginx-ingress ingress-nginx/ingress-nginx \
 #create the ingress
 kubectl apply -f ingress.yaml
 
-#check ingress
+#check ingress (the address field may take 1-2 minsto update)
 kubectl get ingress -n newdev -o wide
 
 #use the igress public ip (address) and check like http:<ip> and https://<ip>
 
+-----------------------------------------
+Optional Section for AGIC
+-----------------------------------------
+#open up ingress.yaml file and comment following 2 lines
+kubernetes.io/ingress.class: nginx
+nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+#uncomment following line
+kubernetes.io/ingress.class: azure/application-gateway
+
+#recreate the ingress
+kubectl delete -f ingress.yaml
+kubectl create -f ingress.yaml
+
+#get frontend public IP of the Application Gateway or from the portal
+az network application-gateway frontend-ip show -g aksDay3Group --gateway-name agicAppGateway -n agicPublicIp --subscription 118ae9f9-9038-414c-ba64-08c5056602d1
+
+#try the IP and see if you can access our application
 ==================================================================
-
-Optional - Cloud Shell - implement AGIC as Add-On. Change appgw-id suitably
-
-az network application-gateway show -n agicAppGateway -g aksday3group -o tsv --query "id" 
-az aks enable-addons -n aksday3 -g aksday3group -a ingress-appgw --appgw-id /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/applicationGateways/agicAppGateway
-
-#check the app gateway public IP like http://<ip>
-
-======================================================================
-
-kubectl create clusterrole pod-reader --verb=get,list,watch --resource=pods
-kubectl create role pod-reader --verb=get --verb=list --verb=watch --resource=pods
-
-kubectl create rolebinding admin --clusterrole=admin --user=user1 --user=user2 --group=group1
-kubectl create clusterrolebinding pod-reader-binding --clusterrole=pod-reader --user=pranabp@microsoft.com  --group=aksgroup
-
-
-kubectl scale --replicas=3 newdev/phpdeploy
-
-kubectl autoscale deployment phpdeploy --min=2 --max=10
-
-az aks update \
-  --resource-group aksday3group \
-  --name aksday3 \
-  --enable-cluster-autoscaler \
-  --min-count 1 \
-  --max-count 3
-
-
-
-
-
-
-az feature register --name AKS-IngressApplicationGatewayAddon --namespace microsoft.containerservice
-az feature list -o table --query "[?contains(name, 'microsoft.containerservice/AKS-IngressApplicationGatewayAddon')].{Name:name,State:properties.state}"
-az provider register --namespace Microsoft.ContainerService
-
-az network public-ip create -n agicPublicIp -g aksDay3Group --allocation-method Static --sku Standard
-az network vnet create -n agicVnet -g aksDay3Group --address-prefix 11.0.0.0/16 --subnet-name agicSubnet --subnet-prefix 11.0.0.0/24 
-az network application-gateway create -n agicAppGateway -l northeurope -g aksDay3Group --sku Standard_v2 --public-ip-address agicPublicIp --vnet-name agicVnet --subnet agicSubnet
-
-az network vnet show -n aksvnet -g aksday3group -o tsv --query "id"
-az network vnet peering create -n AppGWtoAKSVnetPeering -g aksday3group --vnet-name agicVnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksday3group/providers/Microsoft.Network/virtualNetworks/aksvnet --allow-vnet-access
-az network vnet show -n agicVnet -g aksDay3Group -o tsv --query "id"
-az network vnet peering create -n AKStoAppGWVnetPeering -g aksday3group --vnet-name aksvnet --remote-vnet /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/virtualNetworks/agicVnet --allow-vnet-access
-
-az network application-gateway show -n agicAppGateway -g aksday3group -o tsv --query "id" 
-az aks enable-addons -n aksday3 -g aksday3group -a ingress-appgw --appgw-id /subscriptions/118ae9f9-9038-414c-ba64-08c5056602d1/resourceGroups/aksDay3Group/providers/Microsoft.Network/applicationGateways/agicAppGateway
-
-openssl req -x509 -cofig file ca.cnf  -out aks-ingress-tls.crt -keyout aks-ingress-tls.key
-
-kubectl create secret tls aks-ingress-tls --namespace newdev --key aks-ingress-tls.key --cert aks-ingress-tls.crt
-
-openssl pkcs12 -export -out appgwcert.pfx -inkey privateKey.key -in appgwcert.crt
-kubectl apply -f ingress.yaml
-
-
-
-
-CREATE DATABASE test;
-CREATE TABLE test.messages (message VARCHAR(250));
-INSERT INTO test.messages VALUES ('hello');
-EOF
-
-#docker image rm b6fc2e11262a -f
-
-docker create -t -i aksday3acr.azurecr.io/docker-build-php:v1 bash
-docker start -a -i e3b38ba43e3
 
 
 
