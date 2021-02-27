@@ -1,5 +1,5 @@
 # Migrating a PHP MySQL application to AKS with Deployment, StatefulSet, Secret, Key-Vault, Ingress and AGIC
-Thiese are step by step actions to migrate a simple PHP-MySQL solution to Azure Kubernetes Service (AKS). 
+These are step by step actions to migrate a simple PHP-MySQL solution to Azure Kubernetes Service (AKS). 
 
 <b>Prerequisites:</b>
 1. Azure Account and access to provison a resource group, VNET, AKS cluster, ACR, Ingress Controller, Key-vault and optionally Application Gateway.
