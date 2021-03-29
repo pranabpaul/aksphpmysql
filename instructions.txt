@@ -219,7 +219,33 @@ az network application-gateway frontend-ip show -g aksDay3Group --gateway-name a
 #try the IP and see if you can access our application
 ==================================================================
 
+---------------------------------
+Implement Prometheus and Grafana
+---------------------------------
+#create a new namespace for monitoring
+kubectl create namespace monitoring
 
+#install Prometheus Repo
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm install prometheus prometheus-community/kube-prometheus-stack -n monitoring
 
+#check the installation
+kubectl --namespace monitoring get pods
 
+#get the containerport value of prometheus-prometheus-kube-prometheus-prometheus (in general it is 9090)
+kubectl get po prometheus-prometheus-kube-prometheus-prometheus-0 -n monitoring -o yaml
 
+#port forward prometheus-prometheus-kube-prometheus-prometheus-0 pod
+kubectl port-forward -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0 9090
+
+#get the containerport value of prometheus-grafana (in general it is 3000)
+kubectl get po prometheus-grafana-9bdf8fbd7-fjxnz -n monitoring -o yaml
+
+#to get admin userid and password for grafana use the following
+kubectl get secret -n monitoring prometheus-grafana -o yaml
+
+#base64 decode the admin userid and password like the following (replace the string within quotes suitably)
+echo 'cHJvbS1vcGVyYXRvcg==' | base64 --decode
+
+#port forward prometheus-grafana pod and use the userid and password from above
+kubectl port-forward -n monitoring prometheus-grafana-9bdf8fbd7-fjxnz 3000
