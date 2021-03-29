@@ -235,7 +235,7 @@ kubectl --namespace monitoring get pods
 #get the containerport value of prometheus-prometheus-kube-prometheus-prometheus (in general it is 9090)
 kubectl get po prometheus-prometheus-kube-prometheus-prometheus-0 -n monitoring -o yaml
 
-#port forward prometheus-prometheus-kube-prometheus-prometheus-0 pod
+#port forward prometheus-prometheus-kube-prometheus-prometheus-0 pod. And then check http://localhost:9090 in local browser
 kubectl port-forward -n monitoring prometheus-prometheus-kube-prometheus-prometheus-0 9090
 
 #get the containerport value of prometheus-grafana (in general it is 3000)
@@ -247,5 +247,5 @@ kubectl get secret -n monitoring prometheus-grafana -o yaml
 #base64 decode the admin userid and password like the following (replace the string within quotes suitably)
 echo 'cHJvbS1vcGVyYXRvcg==' | base64 --decode
 
-#port forward prometheus-grafana pod and use the userid and password from above
+#port forward prometheus-grafana pod. Then check http://localhost:9090 in local browser and use the userid and password from above
 kubectl port-forward -n monitoring prometheus-grafana-9bdf8fbd7-fjxnz 3000
