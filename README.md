@@ -15,6 +15,7 @@ Follow steps given in <b>instructions.txt</b> file. We will use Azure Shell and 
 3. Deployment to run PHP containers, Statefulset to run MYSQL container.
 4. Secrets, Key-Vault to store sensitive information like database connection related informations.
 5. Headless ClusterIP service to reach MySQL StatefulSet.
-5. Load Balancer, Ingress and optionally App-Gateway to expose the application. 
+6. Load Balancer, Ingress and optionally App-Gateway to expose the application. 
+7. Implement Prometheus and Grafana in the cluster.
 
 ![Detailed flow](/images/aksphpmysql.jpg)

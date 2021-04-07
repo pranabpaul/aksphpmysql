@@ -247,5 +247,11 @@ kubectl get secret -n monitoring prometheus-grafana -o yaml
 #base64 decode the admin userid and password like the following (replace the string within quotes suitably)
 echo 'cHJvbS1vcGVyYXRvcg==' | base64 --decode
 
-#port forward prometheus-grafana pod. Then check http://localhost:9090 in local browser and use the userid and password from above
+#port forward prometheus-grafana pod. Then check http://localhost:3000 in local browser and use the userid and password from above
 kubectl port-forward -n monitoring prometheus-grafana-9bdf8fbd7-fjxnz 3000
+
+#expose the prometheus-grafana pod through a loadbalancer type service
+kubectl expose po prometheus-grafana-9bdf8fbd7-fjxnz -n monitoring --port=80 --target-port=3000 --name=grafana-service --type=LoadBalancer
+
+#check the services under namespace monitoring and use the external IP of the grafana-service. Use the userid and password above to access grafana
+kubectl get services -n monitoring
